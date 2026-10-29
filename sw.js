@@ -1,9 +1,5 @@
 /* LIS NET Hub - offline cache. Bump CACHE when you redeploy. */
-<<<<<<< HEAD
-const CACHE = 'lisnet-2026-10-29-1';
-=======
 const CACHE = 'lisnet-2026-10-29-2';
->>>>>>> b1eb6046af21da3c4c5fcb409b25c90a84a383fe
 const ASSETS = ['./', './index.html', './manifest.webmanifest',
                 './icon-192.png', './icon-512.png', './icon-512-maskable.png'];
 
