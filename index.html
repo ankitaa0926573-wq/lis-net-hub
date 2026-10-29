@@ -132,6 +132,20 @@ mark{background:#fdf0c2;padding:0 1px}
  #side,#top,.tools{display:none!important} #main{overflow:visible;padding:0}
  details{border:none} details summary{display:none} .q{break-inside:avoid}
 }
+
+/* ===== My Notes feature (added) ===== */
+.qnote{margin-left:auto;background:#fff;border:1px solid var(--line);border-radius:6px;padding:2px 10px;font-size:12.5px;color:#7a5d2a}
+.qnote:hover{background:#f6f1e8}
+.qnote.on{background:#fff4d6;border-color:#e6c97a;color:#7a5200;font-weight:600}
+#notesCount:not(:empty){background:var(--accent);color:#fff;border-radius:9px;padding:0 6px;font-size:11px;margin-left:4px}
+#notesBtn.on #notesCount:not(:empty){background:#fff;color:var(--accent)}
+.sethead.notes .kick{color:#b8860b}
+.srcchip{font-size:11.5px;color:var(--mut)}
+.myrem{margin-top:11px;border-top:1px dashed #ddd6ca;padding-top:9px}
+.myrem label{font-size:11.5px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.06em}
+.myrem textarea{display:block;width:100%;min-height:54px;margin-top:5px;border:1px solid var(--line);border-radius:7px;padding:7px 10px;font:inherit;font-size:14px;background:#fbfaf8;resize:vertical}
+.qfoot{margin-top:10px;display:flex;gap:8px;align-items:center}
+@media print{ .qnote,.qfoot{display:none!important} }
 </style></head><body>
 <div id="app">
  <header id="top">
@@ -139,6 +153,7 @@ mark{background:#fdf0c2;padding:0 1px}
    <span class="stats">114 sets · 1708 questions · 58 afternoon / 56 night</span>
    <input id="search" placeholder="Search topics, questions, explanations…   /">
    <span class="spacer"></span>
+   <button class="tbtn" id="notesBtn" title="Questions you saved to study later">&#9733; Notes <span id="notesCount"></span></button>
    <button class="tbtn" id="focusBtn">Focus</button>
    <button class="tbtn" id="menuBtn">Sets ▾</button>
  </header>
@@ -229,7 +244,7 @@ function ansHTML(a){
 }
 
 function render(i){
-  cur=i; const s=SETS[i]; LS.set('lisnet.last', s.id);
+  notesMode=false; syncNotesBtn(); cur=i; const s=SETS[i]; LS.set('lisnet.last', s.id);
   const head=`<div class="sethead ${s.slot}">
      <div class="kick">${s.slot==='afternoon'?'Afternoon Set':'Night Set'} · ${fmtDate(s.date)}</div>
      <h2>${hl(s.disp)}</h2>
@@ -259,8 +274,9 @@ function render(i){
   if(s.qs.length){
     h+=`<h3 class="sec">${s.nq} MCQs</h3>`;
     for(const q of s.qs){
-      h+=`<div class="q"><div class="qh"><span class="qn">${q.n}</span>
-        ${q.type?`<span class="qt">${esc(q.type)}</span>`:''}</div>
+      h+=`<div class="q" data-n="${q.n}"><div class="qh"><span class="qn">${q.n}</span>
+        ${q.type?`<span class="qt">${esc(q.type)}</span>`:''}
+        <button class="qnote${notes[nkey(s.id,q.n)]?' on':''}" data-sid="${esc(s.id)}" data-n="${q.n}">${notes[nkey(s.id,q.n)]?'&#9733; Added to note':'&#9734; Add to note'}</button></div>
         ${blocks(q.q)}
         <details><summary>Show answer &amp; explanation</summary>
         <div class="ansbox">${ansHTML(q.a)}</div></details></div>`;
@@ -303,6 +319,87 @@ document.addEventListener('keydown',e=>{
   const at=vis.findIndex(s=>s.idx===cur);
   if(e.key==='j'||e.key==='ArrowDown'){e.preventDefault();render(vis[Math.min(at+1,vis.length-1)].idx)}
   if(e.key==='k'||e.key==='ArrowUp'){e.preventDefault();render(vis[Math.max(at-1,0)].idx)}
+});
+
+/* ===== My Notes feature (added): "Add to note" + Notes view ===== */
+let notesMode=false, prevCur=null;
+let notes = LS.get('lisnet.notes', {});   // { "setId|qNo": {sid,n,t,r} }
+const nkey=(sid,n)=>sid+'|'+n;
+const saveNotes=()=>LS.set('lisnet.notes',notes);
+function syncNotesBtn(){
+  const c=Object.keys(notes).filter(k=>findQ(notes[k].sid,notes[k].n)).length;
+  $('#notesCount').textContent=c?c:'';
+  $('#notesBtn').classList.toggle('on',notesMode);
+}
+function findQ(sid,n){
+  const s=SETS.find(x=>x.id===sid); if(!s) return null;
+  const q=s.qs.find(x=>String(x.n)===String(n)); return q?{s,q}:null;
+}
+function toggleNote(sid,n){
+  const k=nkey(sid,n);
+  if(notes[k]) delete notes[k]; else notes[k]={sid,n:String(n),t:Date.now(),r:''};
+  saveNotes(); syncNotesBtn();
+}
+function renderNotes(){
+  const keep = notesMode ? $('#main').scrollTop : 0;
+  if(!notesMode) prevCur=cur;
+  notesMode=true; cur=null;
+  const items=Object.values(notes).filter(x=>findQ(x.sid,x.n)).sort((a,b)=>b.t-a.t);
+  let h=`<article id="set"><div class="sethead notes">
+    <div class="kick">My Notes</div><h2>Questions to revisit</h2>
+    <p class="covers">Questions you flagged with &ldquo;Add to note&rdquo; &mdash; come back here when you have time for a deep dive.</p>
+    <div class="meta"><span class="pill unit">${items.length} saved</span></div></div>`;
+  if(!items.length){
+    h+=`<div class="warnbox">Nothing saved yet. Open any set and tap <b>&#9734; Add to note</b> on a question you want to study in depth later.</div>`;
+  } else {
+    h+=`<div class="tools">
+      <button class="tbtn" data-act="nreveal">Reveal all answers</button>
+      <button class="tbtn" data-act="nhide">Hide all</button>
+      <button class="tbtn" data-act="nprint">Print</button>
+      <button class="tbtn" data-act="nclear">Clear all notes</button></div>`;
+    for(const it of items){
+      const {s,q}=findQ(it.sid,it.n);
+      h+=`<div class="q"><div class="qh"><span class="qn">${q.n}</span>
+        ${q.type?`<span class="qt">${esc(q.type)}</span>`:''}
+        <span class="srcchip">${fmtDate(s.date)} &middot; ${s.slot==='afternoon'?'Afternoon':'Night'}${s.unit?' &middot; '+esc(s.unit):''} &middot; ${esc(s.short)}</span>
+        <button class="qnote on" data-act="rm" data-sid="${esc(it.sid)}" data-n="${esc(it.n)}">&#9733; Remove</button></div>
+        ${blocks(q.q)}
+        <details><summary>Show answer &amp; explanation</summary><div class="ansbox">${ansHTML(q.a)}</div></details>
+        <div class="myrem"><label>My remark</label>
+          <textarea data-sid="${esc(it.sid)}" data-n="${esc(it.n)}" placeholder="What do I need to dig into here?">${esc(it.r||'')}</textarea></div>
+        <div class="qfoot"><button class="tbtn" data-act="open" data-i="${s.idx}" data-n="${q.n}">Open full set</button></div></div>`;
+    }
+  }
+  $('#main').innerHTML=h+'</article>';
+  $('#main').scrollTop=keep;
+  syncNotesBtn(); renderList();
+}
+$('#notesBtn').addEventListener('click',()=>{
+  if(notesMode){ if(prevCur!=null) render(prevCur); else render(0); }
+  else { renderNotes(); if(isNarrow()) closeDrawer(); }
+});
+$('#main').addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b) return;
+  const act=b.dataset.act;
+  if(b.classList.contains('qnote') && !act){            // Add to note (inside a set)
+    toggleNote(b.dataset.sid,b.dataset.n);
+    const on=!!notes[nkey(b.dataset.sid,b.dataset.n)];
+    b.classList.toggle('on',on);
+    b.innerHTML=on?'&#9733; Added to note':'&#9734; Add to note';
+  } else if(act==='rm'){ toggleNote(b.dataset.sid,b.dataset.n); renderNotes(); }
+  else if(act==='open'){
+    render(+b.dataset.i);
+    const el=document.querySelector('#main .q[data-n="'+b.dataset.n+'"]');
+    if(el) el.scrollIntoView({block:'start'});
+  }
+  else if(act==='nreveal') document.querySelectorAll('#main details').forEach(d=>d.open=true);
+  else if(act==='nhide') document.querySelectorAll('#main details').forEach(d=>d.open=false);
+  else if(act==='nprint') window.print();
+  else if(act==='nclear'){ if(confirm('Remove all saved notes?')){ notes={}; saveNotes(); renderNotes(); } }
+});
+$('#main').addEventListener('input',e=>{
+  const t=e.target; if(t.tagName!=='TEXTAREA'||!t.dataset.sid) return;
+  const it=notes[nkey(t.dataset.sid,t.dataset.n)]; if(it){ it.r=t.value; saveNotes(); }
 });
 
 if('serviceWorker' in navigator && location.protocol.startsWith('http')){
